@@ -1,0 +1,179 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkStream | Modern Task Management</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'tasks/style.css' %}">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <h1>Work<span>Stream</span></h1>
+                <p>Hello, {{ request.user.username|capfirst }}</p>
+            </div>
+
+            <form method="GET" class="search-form">
+                <input type="text" name="search-area" placeholder="Search your tasks..." value="{{ search_input }}">
+                <button type="submit">🔍</button>
+            </form>
+
+            <div class="header-actions">
+                <div class="bulk-actions-group">
+                    <label class="select-all-label">
+                        <input type="checkbox" id="selectAll"> Select All
+                    </label>
+                    <button type="submit" id="deleteSelectedBtn" form="bulk-delete-form" class="btn-danger hidden"
+                        onclick="return confirm('Delete selected tasks?')">
+                        🗑️ Delete Selected (<span id="selectedCount">0</span>)
+                    </button>
+                </div>
+                <button type="button" class="btn-primary"
+                    onclick="document.getElementById('taskModal').style.display='flex'">+ New Task</button>
+                <a href="{% url 'logout' %}" class="logout-link" title="Logout">Logout</a>
+            </div>
+        </header>
+
+        <!-- New Task Modal -->
+        <div id="taskModal" class="modal">
+            <div class="modal-content">
+                <h2>Create New Task</h2>
+                <form method="POST">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label>Title</label>
+                        {{ form.title }}
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        {{ form.description }}
+                    </div>
+                    <div class="form-group">
+                        <label>Due Date</label>
+                        {{ form.due_date }}
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-secondary"
+                            onclick="document.getElementById('taskModal').style.display='none'">Cancel</button>
+                        <button type="submit" class="btn-primary">Save Task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <form id="bulk-delete-form" method="POST" action="{% url 'delete_selected' %}">
+            {% csrf_token %}
+            <main class="task-grid">
+                {% for task in tasks %}
+                <div
+                    class="task-card {% if task.completed %}completed{% endif %} {% if task.due_soon %}due-soon-card{% endif %}">
+                    <div class="bulk-select">
+                        <input type="checkbox" name="task_ids" value="{{ task.id }}">
+                    </div>
+                    <div class="task-header">
+                        <span class="status-dot"></span>
+                        <span class="date {% if task.is_overdue %}overdue{% endif %}">
+                            {% if task.due_soon %}
+                            <span class="alert-badge">⚠️ URGENT</span>
+                            {% endif %}
+                            {% if task.due_date %}
+                            ⏰ Due: {{ task.due_date|date:"g:i a" }}
+                            {% else %}
+                            Created: {{ task.created_at|date:"M d" }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    <h3>{{ task.title }}</h3>
+                    <p>{{ task.description|default:"No description provided." }}</p>
+                    <div class="task-footer">
+                        <div class="actions">
+                            <a href="{% url 'toggle_task' task.id %}" class="action-btn toggle-btn"
+                                title="Toggle Status">
+                                {% if task.completed %}
+                                ↩️
+                                {% else %}
+                                ✅
+                                {% endif %}
+                            </a>
+                            <a href="{% url 'delete_task' task.id %}" class="action-btn delete-btn" title="Delete Task"
+                                onclick="return confirm('Delete this task?')">
+                                🗑️
+                            </a>
+                        </div>
+                        {% if task.completed %}
+                        <span class="badge success">Completed</span>
+                        {% else %}
+                        <span class="badge warning">Pending</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <div class="empty-state">
+                    <img src="https://cdni.iconscout.com/illustration/premium/thumb/empty-state-2130362-1800926.png"
+                        alt="No tasks">
+                    <h3>Your workspace is clear</h3>
+                    <p>Ready to start something new? Click "+ New Task" to begin.</p>
+                </div>
+                {% endfor %}
+            </main>
+        </form>
+    </div>
+
+    <!-- Mouse Tracking Script for Premium Effects -->
+    <script>
+        document.addEventListener('mousemove', e => {
+            for (const card of document.getElementsByClassName("task-card")) {
+                const rect = card.getBoundingClientRect(),
+                    x = e.clientX - rect.left,
+                    y = e.clientY - rect.top;
+
+                card.style.setProperty("--mouse-x", `${x}px`);
+                card.style.setProperty("--mouse-y", `${y}px`);
+            };
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('input[name="task_ids"]');
+            const deleteBtn = document.getElementById('deleteSelectedBtn');
+            const selectedCountSpan = document.getElementById('selectedCount');
+
+            function updateUI() {
+                const checkedCount = document.querySelectorAll('input[name="task_ids"]:checked').length;
+                selectedCountSpan.textContent = checkedCount;
+
+                if (checkedCount > 0) {
+                    deleteBtn.classList.remove('hidden');
+                } else {
+                    deleteBtn.classList.add('hidden');
+                }
+            }
+
+            if (selectAll) {
+                selectAll.addEventListener('change', function () {
+                    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+                    updateUI();
+                });
+            }
+
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', updateUI);
+            });
+
+            // Close modal when clicking outside
+            window.onclick = function (event) {
+                const modal = document.getElementById('taskModal');
+                if (event.target == modal) {
+                    modal.style.display = "none";
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
